@@ -396,11 +396,13 @@ public class PlayHandler extends SimpleChannelUpstreamHandler {
             // Begins searching / after 9th character (last / of https://)
             uri = uri.substring(uri.indexOf("/", 9));
         }
-        
-        String path = URLDecoder.decode(uri, "UTF-8");
+
+        String path;
         if (index != -1) {
             path = URLDecoder.decode(uri.substring(0, index), "UTF-8");
             querystring = uri.substring(index + 1);
+        } else { 
+            path = URLDecoder.decode(uri, "UTF-8");
         }
 
         final Request request = new Request();
