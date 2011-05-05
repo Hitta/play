@@ -150,6 +150,7 @@ public class PluginCollection {
                 }
 
                 PlayPlugin newPlugin = (PlayPlugin) constructors[0].newInstance();
+                newPlugin.index = plugin.index;
                 //replace this plugin
                 replacePlugin(plugin, newPlugin);
                 reloadedPlugins.add(newPlugin);
@@ -344,6 +345,24 @@ public class PluginCollection {
         return getEnabledPlugins().contains( plugin );
     }
 
+    public boolean compileSources() {
+        for( PlayPlugin plugin : getEnabledPlugins() ){
+            if(plugin.compileSources()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean detectClassesChange() {
+        for(PlayPlugin plugin : getEnabledPlugins()){
+            if(plugin.detectClassesChange()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void invocationFinally(){
         for( PlayPlugin plugin : getEnabledPlugins() ){
             plugin.invocationFinally();
@@ -431,13 +450,16 @@ public class PluginCollection {
             try {
                 long start = System.currentTimeMillis();
                 plugin.enhance(applicationClass);
-                Logger.trace("%sms to apply %s to %s", System.currentTimeMillis() - start, plugin, applicationClass.name);
+                if (Logger.isTraceEnabled()) {
+                    Logger.trace("%sms to apply %s to %s", System.currentTimeMillis() - start, plugin, applicationClass.name);
+                }
             } catch (Exception e) {
                 throw new UnexpectedException("While applying " + plugin + " on " + applicationClass.name, e);
             }
         }
     }
 
+    @Deprecated
     public List<ApplicationClasses.ApplicationClass> onClassesChange(List<ApplicationClasses.ApplicationClass> modified){
         List<ApplicationClasses.ApplicationClass> modifiedWithDependencies = new ArrayList<ApplicationClasses.ApplicationClass>();
         for( PlayPlugin plugin : getEnabledPlugins() ){
@@ -446,7 +468,7 @@ public class PluginCollection {
         return modifiedWithDependencies;
     }
 
-
+    @Deprecated
     public void compileAll(List<ApplicationClasses.ApplicationClass> classes){
         for( PlayPlugin plugin : getEnabledPlugins() ){
             plugin.compileAll(classes);

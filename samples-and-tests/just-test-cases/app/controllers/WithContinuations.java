@@ -5,13 +5,22 @@ import play.mvc.*;
 import play.db.jpa.*;
 import play.libs.*;
 import play.libs.F.*;
+import static play.libs.F.*;
 
 import java.util.*;
 import java.util.concurrent.atomic.*;
 
 import models.*;
 
+import play.jobs.*;
+
 public class WithContinuations extends Controller {
+    
+    @Before
+    static void intercept() {
+        // just to check
+        Logger.info("Before continuation");
+    }
 
     public static void loopWithWait() {
         StringBuilder sb = new StringBuilder();
@@ -25,6 +34,17 @@ public class WithContinuations extends Controller {
         renderText(sb);
     }
     
+    public static void waitAndThenRedirect() {
+        String hello = "Hello";
+        String r = await(new jobs.DoSomething(100).now());
+        System.out.println(play.classloading.enhancers.ControllersEnhancer.ControllerInstrumentation.isActionCallAllowed());
+        sayHello(hello + " -> " + r);
+    }
+    
+    public static void sayHello(String text) {
+        render(text);
+    }
+    
     public static void waitFuture() {
         StringBuilder sb = new StringBuilder();
         for(int i=0; i<5; i++) {
@@ -35,6 +55,29 @@ public class WithContinuations extends Controller {
             sb.append(i + ":" + delay + "[" + r + "]");
         }
         renderText(sb);
+    }
+    
+    public static void waitWithTimeout() {
+        Promise<String> task1 = new jobs.DoSomething(100).now();
+        Promise<String> task2 = new jobs.DoSomething(2000).now();
+        Either<List<String>,Timeout> r = await(Promise.waitEither(Promise.waitAll(task1, task2), Timeout(300)));
+        
+        for(Timeout t : r._2) {
+            
+            StringBuilder result = new StringBuilder();
+            
+            if(task1.isDone()) {
+                result.append(" + Task1 -> " + task1.getOrNull());
+            }
+            
+            if(task2.isDone()) {
+                result.append(" + Task2 -> " + task2.getOrNull());
+            }
+            
+            renderText("Timeout! Partial result is " + result);
+        }
+        
+        renderText("Fail!");
     }
     
     public static void waitAll() {
@@ -192,6 +235,30 @@ public class WithContinuations extends Controller {
                 renderText("yep -> %s", result);
             }
         });
+    }
+    
+    public static void renderTemplateWithVariablesAssignedBeforeAwait() {
+        int n = 1;
+        String a = "A";
+        Job<String> job = new Job<String>(){
+            public String doJobWithResult() {
+                return "B";
+            }
+        };
+        
+        String b = await(job.now());
+        
+        String c = "C";
+        
+        await(40);
+        
+        String d = "D";
+        
+        //await("1s");
+        
+        String e = "E";
+        
+        render(n,a,b,c,d,e);
     }
     
 }

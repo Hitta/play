@@ -13,7 +13,7 @@ class ModuleNotFound(Exception):
     def __str__(self):
         return repr(self.value)
 
-class PlayApplication:
+class PlayApplication(object):
     """A Play Application: conf file, java"""
 
     # ~~~~~~~~~~~~~~~~~~~~~~ Constructor
@@ -29,14 +29,20 @@ class PlayApplication:
         else:
             self.conf = None
         self.play_env = env
-        self.jpda_port = self.readConf('jpda_port')
+        self.jpda_port = self.readConf('jpda.port')
         self.ignoreMissingModules = ignoreMissingModules
+
+
 
     # ~~~~~~~~~~~~~~~~~~~~~~ Configuration File
 
     def check(self):
-        if not os.path.exists(os.path.join(self.path, 'conf', 'routes')):
-            print "~ Oops. %s does not seem to host a valid application" % os.path.normpath(self.path)
+        try:
+            assert os.path.exists(os.path.join(self.path, 'conf', 'routes'))
+            assert os.path.exists(os.path.join(self.path, 'conf', 'application.conf'))
+        except AssertionError:
+            print "~ Oops. conf/routes or conf/application.conf missing."
+            print "~ %s does not seem to host a valid application." % os.path.normpath(self.path)
             print "~"
             sys.exit(-1)
 
@@ -55,7 +61,6 @@ class PlayApplication:
     def modules(self):
         modules = []
         for m in self.readConfs('module.'):
-            om = m
             if '${play.path}' in m:
                 m = m.replace('${play.path}', self.play_env["basedir"])
             if m[0] is not '/':
@@ -72,6 +77,8 @@ class PlayApplication:
         if self.path and os.path.exists(os.path.join(self.path, 'modules')):
             for m in os.listdir(os.path.join(self.path, 'modules')):
                 mf = os.path.join(os.path.join(self.path, 'modules'), m)
+                if os.path.basename(mf)[0] == '.':
+                    continue
                 if os.path.isdir(mf):
                     modules.append(mf)
                 else:
@@ -82,25 +89,6 @@ class PlayApplication:
 
     def module_names(self):
         return map(lambda x: x[7:],self.conf.getAllKeys("module."))
-
-    def load_modules(self):
-        if os.environ.has_key('MODULES'):
-            if os.name == 'nt':
-                modules = os.environ['MODULES'].split(';')
-            else:
-                modules = os.environ['MODULES'].split(':')
-        else:
-            modules = []
-
-        if play_app is not None:
-            try:
-                modules = play_app.modules()
-            except ModuleNotFound, e:
-                print 'Module not found %s' % e
-                sys.exit(-1)
-
-            if isTestFrameworkId(play_env["id"]):
-                modules.append(os.path.normpath(os.path.join(play_env["basedir"], 'modules/testrunner')))
 
     def override(self, f, t):
         fromFile = None
@@ -173,19 +161,19 @@ class PlayApplication:
 
     def pid_path(self):
         if self.play_env.has_key('pid_file'):
-            return os.path.join(self.path, self.play_env['pid_file']);
+            return os.path.join(self.path, self.play_env['pid_file'])
         elif os.environ.has_key('PLAY_PID_PATH'):
-            return os.environ['PLAY_PID_PATH'];
+            return os.environ['PLAY_PID_PATH']
         else:
-            return os.path.join(self.path, 'server.pid');
+            return os.path.join(self.path, 'server.pid')
 
     def log_path(self):
         if not os.environ.has_key('PLAY_LOG_PATH'):
-            log_path = os.path.join(self.path, 'logs');
+            log_path = os.path.join(self.path, 'logs')
         else:
-            log_path = os.environ['PLAY_LOG_PATH'];
+            log_path = os.environ['PLAY_LOG_PATH']
         if not os.path.exists(log_path):
-            os.mkdir(log_path);
+            os.mkdir(log_path)
         return log_path
 
     def check_jpda(self):
@@ -198,7 +186,9 @@ class PlayApplication:
             print 'JPDA port %s is already used. Will try to use any free port for debugging' % self.jpda_port
             self.jpda_port = 0
 
-    def java_cmd(self, java_args, cp_args=None, className='play.server.Server', args=['']):
+    def java_cmd(self, java_args, cp_args=None, className='play.server.Server', args = None):
+        if args is None:
+            args = ['']
         memory_in_args=False
         for arg in java_args:
             if arg.startswith('-Xm'):
@@ -231,6 +221,12 @@ class PlayApplication:
             args += ["--https.port=%s" % self.play_env['https.port']]
             
         java_args.append('-Dfile.encoding=utf-8')
+
+        if self.readConf('application.mode') == 'dev':
+            if not self.play_env["disable_check_jpda"]: self.check_jpda()
+            java_args.append('-Xdebug')
+            java_args.append('-Xrunjdwp:transport=dt_socket,address=%s,server=y,suspend=n' % self.jpda_port)
+            java_args.append('-Dplay.debug=yes')
         
         java_cmd = [self.java_path(), '-javaagent:%s' % self.agent_path()] + java_args + ['-classpath', cp_args, '-Dapplication.path=%s' % self.path, '-Dplay.id=%s' % self.play_env["id"], className] + args
         return java_cmd
@@ -295,6 +291,6 @@ class PlayConfParser:
 def hasKey(arr, elt):
     try:
         i = arr.index(elt)
-        return True;
+        return True
     except:
-        return False;
+        return False

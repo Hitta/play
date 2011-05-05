@@ -9,6 +9,7 @@ import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Stack;
 import java.util.concurrent.Future;
 
 import org.w3c.dom.Document;
@@ -18,6 +19,7 @@ import play.Logger;
 import play.Play;
 import play.classloading.enhancers.ControllersEnhancer.ControllerInstrumentation;
 import play.classloading.enhancers.ControllersEnhancer.ControllerSupport;
+import play.classloading.enhancers.LocalvariablesNamesEnhancer;
 import play.classloading.enhancers.LocalvariablesNamesEnhancer.LocalVariablesNamesTracer;
 import play.classloading.enhancers.LocalvariablesNamesEnhancer.LocalVariablesSupport;
 import play.data.binding.Unbinder;
@@ -552,6 +554,7 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
             Method actionMethod = (Method) ActionInvoker.getActionMethod(action)[1];
             String[] names = (String[]) actionMethod.getDeclaringClass().getDeclaredField("$" + actionMethod.getName() + LocalVariablesNamesTracer.computeMethodHash(actionMethod.getParameterTypes())).get(null);
             for (int i = 0; i < names.length && i < args.length; i++) {
+                Annotation[] annotations = actionMethod.getParameterAnnotations()[i];
                 boolean isDefault = false;
                 try {
                     Method defaultMethod = actionMethod.getDeclaringClass().getDeclaredMethod(actionMethod.getName() + "$default$" + (i + 1));
@@ -565,15 +568,20 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
                 } catch (NoSuchMethodException e) {
                     //
                 }
+
+                // Bind the argument
+
                 if (isDefault) {
                     newArgs.put(names[i], new Default(args[i]));
                 } else {
-                    Unbinder.unBind(newArgs, args[i], names[i]);
+                    Unbinder.unBind(newArgs, args[i], names[i], annotations);
                 }
+
             }
             try {
 
                 ActionDefinition actionDefinition = Router.reverse(action, newArgs);
+
                 if (_currentReverse.get() != null) {
                     ActionDefinition currentActionDefinition = _currentReverse.get();
                     currentActionDefinition.action = actionDefinition.action;
@@ -581,6 +589,7 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
                     currentActionDefinition.method = actionDefinition.method;
                     currentActionDefinition.star = actionDefinition.star;
                     currentActionDefinition.args = actionDefinition.args;
+
                     _currentReverse.remove();
                 } else {
                     throw new Redirect(actionDefinition.toString(), permanent);
@@ -890,7 +899,19 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
 
     protected static void await(int millis) {
         Request.current().isNew = false;
+        storeOrRestoreLocalVariableNamesState();
         Continuation.suspend(millis);
+    }
+
+    private static void storeOrRestoreLocalVariableNamesState() {
+        Stack<Map<String, Object>> localVariablesState = (Stack<Map<String, Object>>) Http.Request.current().args.remove(ActionInvoker.LV);
+        if (localVariablesState!=null) {
+            //we are restoring localVariableNames after suspend
+            LocalvariablesNamesEnhancer.LocalVariablesNamesTracer.setLocalVariablesStateAfterAwait(localVariablesState);
+        } else {
+            // we are capturing localVariableNames before suspend
+            Request.current().args.put(ActionInvoker.LV, LocalVariablesNamesTracer.getLocalVariablesStateBeforeAwait());
+        }
     }
 
     protected static void await(int millis, F.Action0 callback) {
@@ -901,17 +922,21 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
 
     @SuppressWarnings("unchecked")
     protected static <T> T await(Future<T> future) {
+        storeOrRestoreLocalVariableNamesState();
         if(future != null) {
             Request.current().args.put(ActionInvoker.F, future);
         } else if(Request.current().args.containsKey(ActionInvoker.F)) {
-            // Since the continiation will restart in this code that isn't intstrumented by javaflow,
+            // Since the continuation will restart in this code that isn't intstrumented by javaflow,
             // we need to reset the state manually.
             StackRecorder.get().isCapturing = false;
             StackRecorder.get().isRestoring = false;
             StackRecorder.get().value = null;
             future = (Future<T>)Request.current().args.get(ActionInvoker.F);
+
+            // Now reset the Controller invocation context
+            ControllerInstrumentation.stopActionCall();
         } else {
-            throw new UnexpectedException("Lost future for " + Http.Request.current() + "!");
+            throw new UnexpectedException("Lost promise for " + Http.Request.current() + "!");
         }
         
         if(future.isDone()) {

@@ -9,6 +9,8 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+
+import org.apache.commons.lang.StringUtils;
 import play.Play.Mode;
 import play.classloading.ApplicationClasses.ApplicationClass;
 import play.classloading.enhancers.ContinuationEnhancer;
@@ -30,7 +32,7 @@ import play.mvc.Http.Response;
 public class CorePlugin extends PlayPlugin {
 
     /**
-     * Get the appication status
+     * Get the application status
      */
     public static String computeApplicationStatus(boolean json) {
         if (json) {
@@ -49,7 +51,7 @@ public class CorePlugin extends PlayPlugin {
             }
             return o.toString();
         }
-        StringBuffer dump = new StringBuffer(16);
+        StringBuilder dump = new StringBuilder(16);
         for (PlayPlugin plugin : Play.pluginCollection.getEnabledPlugins()) {
             try {
                 String status = plugin.getStatus();
@@ -118,7 +120,7 @@ public class CorePlugin extends PlayPlugin {
         out.println("~~~~~~~~~~~~~~~");
         out.println("Version: " + Play.version);
         out.println("Path: " + Play.frameworkPath);
-        out.println("ID: " + (Play.id == null || Play.id.isEmpty() ? "(not set)" : Play.id));
+        out.println("ID: " + (StringUtils.isEmpty(Play.id) ? "(not set)" : Play.id));
         out.println("Mode: " + Play.mode);
         out.println("Tmp dir: " + (Play.tmpDir == null ? "(no tmp dir)" : Play.tmpDir));
         out.println();
@@ -292,7 +294,9 @@ public class CorePlugin extends PlayPlugin {
             try {
                 long start = System.currentTimeMillis();
                 ((Enhancer) enhancer.newInstance()).enhanceThisClass(applicationClass);
-                Logger.trace("%sms to apply %s to %s", System.currentTimeMillis() - start, enhancer.getSimpleName(), applicationClass.name);
+                if (Logger.isTraceEnabled()) {
+                    Logger.trace("%sms to apply %s to %s", System.currentTimeMillis() - start, enhancer.getSimpleName(), applicationClass.name);
+                }
             } catch (Exception e) {
                 throw new UnexpectedException("While applying " + enhancer + " on " + applicationClass.name, e);
             }

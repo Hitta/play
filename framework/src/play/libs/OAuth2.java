@@ -18,6 +18,7 @@ public class OAuth2 {
     public String accessTokenURL;
     public String clientid;
     public String secret;
+
     public OAuth2(String authorizationURL,
             String accessTokenURL,
             String clientid,
@@ -33,14 +34,14 @@ public class OAuth2 {
     }
 
     public void requestAccessToken() {
-        String callbackURL = Request.current().getBase() + Request.current().path;
+        String callbackURL = Request.current().getBase() + Request.current().url;
         throw new Redirect(accessTokenURL
                 + "?client_id=" + clientid
                 + "&redirect_uri=" + callbackURL);
     }
 
     public String getAccessToken() {
-        String callbackURL = Request.current().getBase() + Request.current().path;
+        String callbackURL = Request.current().getBase() + Request.current().url;
         String accessCode = Params.current().get("code");
         Map<String, Object> params = new HashMap<String, Object>();
         params.put("client_id", clientid);

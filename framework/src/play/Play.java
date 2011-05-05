@@ -1,6 +1,5 @@
 package play;
 
-import groovy.lang.ExpandoMetaClass;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.io.BufferedReader;
@@ -18,6 +17,7 @@ import play.classloading.ApplicationClassloader;
 import play.exceptions.PlayException;
 import play.exceptions.UnexpectedException;
 import play.libs.IO;
+import play.mvc.Http;
 import play.mvc.Router;
 import play.plugins.PluginCollection;
 import play.templates.TemplateLoader;
@@ -52,10 +52,14 @@ public class Play {
         }
     }
     /**
+     * Is the application initialized
+     */
+    public static boolean initialized = false;
+
+    /**
      * Is the application started
      */
     public static boolean started = false;
-
     /**
      * True when the one and only shutdown hook is enabled
      */
@@ -132,8 +136,6 @@ public class Play {
      * The very secret key
      */
     public static String secretKey;
-
-
     /**
      * pluginCollection that holds all loaded plugins and all enabled plugins..
      */
@@ -165,6 +167,10 @@ public class Play {
      * Lazy load the templates on demand
      */
     public static boolean lazyLoadTemplates = false;
+    /**
+     * This is used as default encoding everywhere related to the web: request, response, WS
+     */
+    public static String defaultWebEncoding = "utf-8";
 
     /**
      * Init the framework
@@ -181,27 +187,7 @@ public class Play {
         // load all play.static of exists
         initStaticStuff();
 
-        // Guess the framework path
-        try {
-            URL versionUrl = Play.class.getResource("/play/version");
-            // Read the content of the file
-            Play.version = new LineNumberReader(new InputStreamReader(versionUrl.openStream())).readLine();
-
-            // This is used only by the embedded server (Mina, Netty, Jetty etc)
-            URI uri = new URI(versionUrl.toString().replace(" ", "%20"));
-            if (frameworkPath == null || !frameworkPath.exists()) {
-                if (uri.getScheme().equals("jar")) {
-                    String jarPath = uri.getSchemeSpecificPart().substring(5, uri.getSchemeSpecificPart().lastIndexOf("!"));
-                    frameworkPath = new File(jarPath).getParentFile().getParentFile().getAbsoluteFile();
-                } else if (uri.getScheme().equals("file")) {
-                    frameworkPath = new File(uri).getParentFile().getParentFile().getParentFile().getParentFile();
-                } else {
-                    throw new UnexpectedException("Cannot find the Play! framework - trying with uri: " + uri + " scheme " + uri.getScheme());
-                }
-            }
-        } catch (Exception e) {
-            throw new UnexpectedException("Where is the framework ?", e);
-        }
+        guessFrameworkPath();
 
         // Read the configuration file
         readConfiguration();
@@ -213,9 +199,10 @@ public class Play {
         String logLevel = configuration.getProperty("application.log", "INFO");
 
         //only override log-level if Logger was not configured manually
-        if( !Logger.configuredManually) {
+        if (!Logger.configuredManually) {
             Logger.setUp(logLevel);
         }
+        Logger.recordCaller = Boolean.parseBoolean(configuration.getProperty("application.log.recordCaller", "false"));
 
         Logger.info("Starting %s", root.getAbsolutePath());
 
@@ -227,7 +214,11 @@ public class Play {
             if (!tmpDir.isAbsolute()) {
                 tmpDir = new File(applicationPath, tmpDir.getPath());
             }
-            Logger.trace("Using %s as tmp dir", Play.tmpDir);
+
+            if (Logger.isTraceEnabled()) {
+                Logger.trace("Using %s as tmp dir", Play.tmpDir);
+            }
+
             if (!tmpDir.exists()) {
                 try {
                     if (readOnlyTmp) {
@@ -246,6 +237,9 @@ public class Play {
         if (usePrecompiled || forceProd) {
             mode = Mode.PROD;
         }
+
+        // Context path
+        ctxPath = configuration.getProperty("http.path", ctxPath);
 
         // Build basic java source path
         VirtualFile appRoot = VirtualFile.open(applicationPath);
@@ -282,6 +276,12 @@ public class Play {
             Play.ctxPath = "";
         }
 
+        // Default cookie domain
+        Http.Cookie.defaultDomain = configuration.getProperty("application.defaultCookieDomain", null);
+        if (Http.Cookie.defaultDomain != null) {
+            Logger.info("Using default cookie domain: " + Http.Cookie.defaultDomain);
+        }
+
         // Plugins
         pluginCollection.loadPlugins();
 
@@ -299,12 +299,38 @@ public class Play {
 
         // Plugins
         pluginCollection.onApplicationReady();
+
+        Play.initialized = true;
+    }
+
+    public static void guessFrameworkPath() {
+        // Guess the framework path
+        try {
+            URL versionUrl = Play.class.getResource("/play/version");
+            // Read the content of the file
+            Play.version = new LineNumberReader(new InputStreamReader(versionUrl.openStream())).readLine();
+
+            // This is used only by the embedded server (Mina, Netty, Jetty etc)
+            URI uri = new URI(versionUrl.toString().replace(" ", "%20"));
+            if (frameworkPath == null || !frameworkPath.exists()) {
+                if (uri.getScheme().equals("jar")) {
+                    String jarPath = uri.getSchemeSpecificPart().substring(5, uri.getSchemeSpecificPart().lastIndexOf("!"));
+                    frameworkPath = new File(jarPath).getParentFile().getParentFile().getAbsoluteFile();
+                } else if (uri.getScheme().equals("file")) {
+                    frameworkPath = new File(uri).getParentFile().getParentFile().getParentFile().getParentFile();
+                } else {
+                    throw new UnexpectedException("Cannot find the Play! framework - trying with uri: " + uri + " scheme " + uri.getScheme());
+                }
+            }
+        } catch (Exception e) {
+            throw new UnexpectedException("Where is the framework ?", e);
+        }
     }
 
     /**
      * Read application.conf and resolve overriden key using the play id mechanism.
      */
-    static void readConfiguration() {
+    public static void readConfiguration() {
         VirtualFile appRoot = VirtualFile.open(applicationPath);
         conf = appRoot.child("conf/application.conf");
         try {
@@ -387,16 +413,22 @@ public class Play {
                 stop();
             }
 
-            if(!shutdownHookEnabled){
+            if (!shutdownHookEnabled) {
                 //registeres shutdown hook - New there's a good chance that we can notify
                 //our plugins that we're going down when some calls ctrl+c or just kills our process..
                 shutdownHookEnabled = true;
 
-                Runtime.getRuntime().addShutdownHook( new Thread() {
-                    public void run(){
-                        Play.stop();
-                    }
-                 });
+                // Try to register shutdown-hook
+                try {
+                    Runtime.getRuntime().addShutdownHook(new Thread() {
+
+                        public void run() {
+                            Play.stop();
+                        }
+                    });
+                } catch (Exception e) {
+                    Logger.trace("Got error while trying to register JVM-shutdownHook. Probably using GAE");
+                }
             }
 
             if (mode == Mode.DEV) {
@@ -413,9 +445,10 @@ public class Play {
             // Configure logs
             String logLevel = configuration.getProperty("application.log", "INFO");
             //only override log-level if Logger was not configured manually
-            if( !Logger.configuredManually) {
+            if (!Logger.configuredManually) {
                 Logger.setUp(logLevel);
             }
+            Logger.recordCaller = Boolean.parseBoolean(configuration.getProperty("application.log.recordCaller", "false"));
 
             // Locales
             langs = new ArrayList<String>(Arrays.asList(configuration.getProperty("application.langs", "").split(",")));
@@ -431,6 +464,20 @@ public class Play {
             if (secretKey.length() == 0) {
                 Logger.warn("No secret key defined. Sessions will not be encrypted");
             }
+
+            // Default web encoding
+            String _defaultWebEncoding = configuration.getProperty("application.web_encoding");
+            if (_defaultWebEncoding != null) {
+                Logger.info("Using custom default web encoding: " + _defaultWebEncoding);
+                defaultWebEncoding = _defaultWebEncoding;
+                // Must update current response also, since the request/response triggering
+                // this configuration-loading in dev-mode have already been
+                // set up with the previous encoding
+                if (Http.Response.current() != null) {
+                    Http.Response.current().encoding = _defaultWebEncoding;
+                }
+            }
+
 
             // Try to load all classes
             Play.classloader.getAllClasses();
@@ -510,13 +557,21 @@ public class Play {
         }
         try {
             Logger.info("Precompiling ...");
+            Thread.currentThread().setContextClassLoader(Play.classloader);
             long start = System.currentTimeMillis();
             classloader.getAllClasses();
-            Logger.trace("%sms to precompile the Java stuff", System.currentTimeMillis() - start);
+
+            if (Logger.isTraceEnabled()) {
+                Logger.trace("%sms to precompile the Java stuff", System.currentTimeMillis() - start);
+            }
+
             if (!lazyLoadTemplates) {
                 start = System.currentTimeMillis();
                 TemplateLoader.getAllTemplate();
-                Logger.trace("%sms to precompile the templates", System.currentTimeMillis() - start);
+
+                if (Logger.isTraceEnabled()) {
+                    Logger.trace("%sms to precompile the templates", System.currentTimeMillis() - start);
+                }
             }
             return true;
         } catch (Throwable e) {
@@ -539,7 +594,9 @@ public class Play {
         }
         try {
             pluginCollection.beforeDetectingChanges();
-            classloader.detectChanges();
+            if(!pluginCollection.detectClassesChange()) {
+                classloader.detectChanges();
+            }
             Router.detectChanges(ctxPath);
             if (conf.lastModified() > startedAt) {
                 start();
@@ -559,7 +616,7 @@ public class Play {
 
     @SuppressWarnings("unchecked")
     public static <T> T plugin(Class<T> clazz) {
-        return (T)pluginCollection.getPluginInstance((Class<? extends PlayPlugin>)clazz);
+        return (T) pluginCollection.getPluginInstance((Class<? extends PlayPlugin>) clazz);
     }
 
 
@@ -649,7 +706,7 @@ public class Play {
             }
         }
         // Auto add special modules
-        if (Play.runingInTestMode()) {
+        if (Play.runningInTestMode()) {
             addModule("_testrunner", new File(Play.frameworkPath, "modules/testrunner"));
         }
         if (Play.mode == Mode.DEV) {
@@ -701,14 +758,16 @@ public class Play {
     }
 
     /**
-     * Returns true if application is runing in test-mode.
+     * Returns true if application is running in test-mode.
      * Test-mode is resolved from the framework id.
      *
      * Your app is running in test-mode if the framwork id (Play.id)
      * is 'test' or 'test-?.*'
      * @return true if testmode
      */
-    public static boolean runingInTestMode(){
+    public static boolean runningInTestMode() {
         return id.matches("test|test-?.*");
     }
+    
+
 }

@@ -1,6 +1,8 @@
 package play.libs;
 
 import play.*;
+import play.mvc.Http;
+
 import java.io.InputStream;
 import java.util.Enumeration;
 import java.util.Properties;
@@ -73,7 +75,7 @@ public class MimeTypes {
     		contentType =  defaultContentType;
     	}
     	if (contentType != null && contentType.startsWith("text/")){
-    		return contentType + "; charset=utf-8";
+    		return contentType + "; charset=" + Http.Response.current().encoding;
     	}
     	return contentType;
     }
@@ -105,7 +107,7 @@ public class MimeTypes {
             while (confenum.hasMoreElements()) {
                 String key = (String)confenum.nextElement();
                 if (key.startsWith("mimetype.")) {
-                    String type = key.substring(key.indexOf('.'));
+                    String type = key.substring(key.indexOf('.')+1).toLowerCase();
                     String value = (String)Play.configuration.get(key);
                     mimetypes.setProperty(type, value);
                 }

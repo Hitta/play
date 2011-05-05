@@ -57,15 +57,17 @@ public class LocalvariablesNamesEnhancer extends Enhancer {
             }
 
             return parameters;
-        } catch(Exception e) {
+        } catch (Exception e) {
             throw new UnexpectedException("Cannot extract parameter names", e);
         }
     }
 
     //
-
     @Override
     public void enhanceThisClass(ApplicationClass applicationClass) throws Exception {
+        if (isAnon(applicationClass)) {
+            return;
+        }
 
         CtClass ctClass = makeClass(applicationClass);
         if (!ctClass.subtypeOf(classPool.get(LocalVariablesSupport.class.getName())) && !ctClass.getName().matches("^controllers\\..*\\$class$")) {
@@ -74,7 +76,7 @@ public class LocalvariablesNamesEnhancer extends Enhancer {
 
         for (CtMethod method : ctClass.getDeclaredMethods()) {
 
-            if(method.getName().contains("$")) {
+            if (method.getName().contains("$")) {
                 // Generated method, skip
                 continue;
             }
@@ -100,7 +102,7 @@ public class LocalvariablesNamesEnhancer extends Enhancer {
                     if (!name.equals("this")) {
                         names.add(name);
                     }
-                } catch(Exception e) {
+                } catch (Exception e) {
                     Logger.warn(e, "While applying localvariables to %s.%s, param %s", ctClass.getName(), method.getName(), i);
                 }
             }
@@ -132,7 +134,7 @@ public class LocalvariablesNamesEnhancer extends Enhancer {
                 continue;
             }
 
-            if(isScalaObject(ctClass)) {
+            if (isScala(applicationClass)) {
                 continue;
             }
 
@@ -396,6 +398,20 @@ public class LocalvariablesNamesEnhancer extends Enhancer {
 
         public static Object getLocalVariable(String variable) {
             return getLocalVariables().get(variable);
+        }
+
+        public static Stack<Map<String, Object>> getLocalVariablesStateBeforeAwait() {
+            Stack<Map<String, Object>> state = localVariables.get();
+            // must clear the ThreadLocal to prevent destroying the state when exit() is called due to continuations-suspend
+            localVariables.set(new Stack<Map<String, Object>>());
+            return state;
+        }
+
+        public static void setLocalVariablesStateAfterAwait(Stack<Map<String, Object>> state) {
+            if (state==null) {
+                state = new Stack<Map<String, Object>>();
+            }
+            localVariables.set( state );
         }
     }
     private final static Map<Integer, Integer> storeByCode = new HashMap<Integer, Integer>();

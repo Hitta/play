@@ -134,7 +134,9 @@ public class Router {
         route.addFormat(headers);
         route.addParams(params);
         route.compute();
-        Logger.trace("Adding [" + route.toString() + "] with params [" + params + "] and headers [" + headers + "]");
+        if (Logger.isTraceEnabled()) {
+            Logger.trace("Adding [" + route.toString() + "] with params [" + params + "] and headers [" + headers + "]");
+        }
         return route;
     }
 
@@ -251,12 +253,16 @@ public class Router {
     }
 
     public static Route route(Http.Request request) {
-        Logger.trace("Route: " + request.path + " - " + request.querystring);
+        if (Logger.isTraceEnabled()) {
+            Logger.trace("Route: " + request.path + " - " + request.querystring);
+        }
         // request method may be overriden if a x-http-method-override parameter is given
         if (request.querystring != null && methodOverride.matches(request.querystring)) {
             Matcher matcher = methodOverride.matcher(request.querystring);
             if (matcher.matches()) {
-                Logger.trace("request method %s overriden to %s ", request.method, matcher.group("method"));
+                if (Logger.isTraceEnabled()) {
+                    Logger.trace("request method %s overriden to %s ", request.method, matcher.group("method"));
+                }
                 request.method = matcher.group("method");
             }
         }
@@ -319,7 +325,7 @@ public class Router {
 
     public static String getFullUrl(String action, Map<String, Object> args) {
         ActionDefinition actionDefinition = reverse(action, args);
-        if(actionDefinition.method.equals("WS")) {
+        if (actionDefinition.method.equals("WS")) {
             return Http.Request.current().getBase().replaceFirst("https?", "ws") + actionDefinition;
         }
         return Http.Request.current().getBase() + actionDefinition;
@@ -377,6 +383,9 @@ public class Router {
     }
 
     public static ActionDefinition reverse(String action, Map<String, Object> args) {
+
+        String encoding = Http.Response.current().encoding;
+
         if (action.startsWith("controllers.")) {
             action = action.substring(12);
         }
@@ -386,7 +395,7 @@ public class Router {
             for (String key : Scope.RouteArgs.current().data.keySet()) {
                 if (!args.containsKey(key)) {
                     args.put(key, Scope.RouteArgs.current().data.get(key));
-                }               
+                }
             }
         }
         for (Route route : routes) {
@@ -461,14 +470,14 @@ public class Router {
                                     @SuppressWarnings("unchecked")
                                     List<Object> vals = (List<Object>) value;
                                     try {
-                                        path = path.replaceAll("\\{(<[^>]+>)?" + key + "\\}", URLEncoder.encode(vals.get(0).toString().replace("$", "\\$"), "utf-8"));
+                                        path = path.replaceAll("\\{(<[^>]+>)?" + key + "\\}", URLEncoder.encode(vals.get(0).toString().replace("$", "\\$"), encoding));
                                     } catch (UnsupportedEncodingException e) {
                                         throw new UnexpectedException(e);
                                     }
                                 } else {
                                     try {
-                                        path = path.replaceAll("\\{(<[^>]+>)?" + key + "\\}", URLEncoder.encode(value.toString().replace("$", "\\$"), "utf-8").replace("%3A", ":").replace("%40", "@"));
-                                        host = host.replaceAll("\\{(<[^>]+>)?" + key + "\\}", URLEncoder.encode(value.toString().replace("$", "\\$"), "utf-8").replace("%3A", ":").replace("%40", "@"));
+                                        path = path.replaceAll("\\{(<[^>]+>)?" + key + "\\}", URLEncoder.encode(value.toString().replace("$", "\\$"), encoding).replace("%3A", ":").replace("%40", "@"));
+                                        host = host.replaceAll("\\{(<[^>]+>)?" + key + "\\}", URLEncoder.encode(value.toString().replace("$", "\\$"), encoding).replace("%3A", ":").replace("%40", "@"));
                                     } catch (UnsupportedEncodingException e) {
                                         throw new UnexpectedException(e);
                                     }
@@ -483,12 +492,12 @@ public class Router {
                                     List<Object> vals = (List<Object>) value;
                                     for (Object object : vals) {
                                         try {
-                                            queryString.append(URLEncoder.encode(key, "utf-8"));
+                                            queryString.append(URLEncoder.encode(key, encoding));
                                             queryString.append("=");
                                             if (object.toString().startsWith(":")) {
                                                 queryString.append(object.toString());
                                             } else {
-                                                queryString.append(URLEncoder.encode(object.toString() + "", "utf-8"));
+                                                queryString.append(URLEncoder.encode(object.toString() + "", encoding));
                                             }
                                             queryString.append("&");
                                         } catch (UnsupportedEncodingException ex) {
@@ -498,12 +507,12 @@ public class Router {
                                     // Skip defaults in queryString
                                 } else {
                                     try {
-                                        queryString.append(URLEncoder.encode(key, "utf-8"));
+                                        queryString.append(URLEncoder.encode(key, encoding));
                                         queryString.append("=");
                                         if (value.toString().startsWith(":")) {
                                             queryString.append(value.toString());
                                         } else {
-                                            queryString.append(URLEncoder.encode(value.toString() + "", "utf-8"));
+                                            queryString.append(URLEncoder.encode(value.toString() + "", encoding));
                                         }
                                         queryString.append("&");
                                     } catch (UnsupportedEncodingException ex) {
@@ -578,13 +587,27 @@ public class Router {
         }
 
         public void absolute() {
+            String hostPart = host;
+            String domain = Http.Request.current().get().domain;
+            int port = Http.Request.current().get().port;
+            if (port != 80 && port != 443) {
+                hostPart += ":" + port;
+            }
+            // ~
             if (!url.startsWith("http")) {
                 if (StringUtils.isEmpty(host)) {
                     url = Http.Request.current().getBase() + url;
+                } else if (host.contains("{_}")) {
+                    java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("([-_a-z0-9A-Z]+([.][-_a-z0-9A-Z]+)?)$").matcher(domain);
+                    if (matcher.find()) {
+                        url = (Http.Request.current().secure ? "https://" : "http://") + hostPart.replace("{_}", matcher.group(1)) + url;
+                    } else {
+                        url = (Http.Request.current().secure ? "https://" : "http://") + hostPart + url;
+                    }
                 } else {
-                    url = (Http.Request.current().secure ? "https://" : "http://") + host + url;
+                    url = (Http.Request.current().secure ? "https://" : "http://") + hostPart + url;
                 }
-                if(method.equals("WS")) {
+                if (method.equals("WS")) {
                     url = url.replaceFirst("https?", "ws");
                 }
             }
@@ -667,8 +690,10 @@ public class Router {
                     this.host = p.substring(0, p.indexOf("/"));
                     String pattern = host.replaceAll("\\.", "\\\\.").replaceAll("\\{.*\\}", "(.*)");
 
-                    Logger.trace("pattern [" + pattern + "]");
-                    Logger.trace("host [" + host + "]");
+                    if (Logger.isTraceEnabled()) {
+                        Logger.trace("pattern [" + pattern + "]");
+                        Logger.trace("host [" + host + "]");
+                    }
 
                     Matcher m = new Pattern(pattern).matcher(host);
                     this.hostPattern = new Pattern(pattern);
@@ -679,13 +704,18 @@ public class Router {
                             if (!name.equals("_")) {
                                 hostArg = new Arg();
                                 hostArg.name = name;
-                                Logger.trace("hostArg name [" + name + "]");
+                                if (Logger.isTraceEnabled()) {
+                                    Logger.trace("hostArg name [" + name + "]");
+                                }
                                 // The default value contains the route version of the host ie {client}.bla.com
                                 // It is temporary and it indicates it is an url route.
                                 // TODO Check that default value is actually used for other cases.
                                 hostArg.defaultValue = host;
                                 hostArg.constraint = new Pattern(".*");
-                                Logger.trace("adding hostArg [" + hostArg + "]");
+
+                                if (Logger.isTraceEnabled()) {
+                                    Logger.trace("adding hostArg [" + hostArg + "]");
+                                }
 
                                 args.add(hostArg);
                             }
