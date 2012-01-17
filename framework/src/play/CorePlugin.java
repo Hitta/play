@@ -16,7 +16,7 @@ import play.classloading.ApplicationClasses.ApplicationClass;
 import play.classloading.enhancers.ContinuationEnhancer;
 import play.classloading.enhancers.ControllersEnhancer;
 import play.classloading.enhancers.Enhancer;
-import play.classloading.enhancers.LocalvariablesNamesEnhancer;
+import play.classloading.enhancers.LVEnhancer;
 import play.classloading.enhancers.MailerEnhancer;
 import play.classloading.enhancers.PropertiesEnhancer;
 import play.classloading.enhancers.SigEnhancer;
@@ -74,7 +74,11 @@ public class CorePlugin extends PlayPlugin {
     public boolean rawInvocation(Request request, Response response) throws Exception {
         if (Play.mode == Mode.DEV && request.path.equals("/@kill")) {
             System.out.println("@KILLED");
-            System.exit(0);
+            if (Play.standalonePlayServer) {
+                System.exit(0);
+            } else {
+                Logger.error("Cannot execute @kill since Play is not running as standalone server");
+            }
         }
         if (request.path.equals("/@status") || request.path.equals("/@status.json")) {
             if(!Play.started) {
@@ -285,10 +289,11 @@ public class CorePlugin extends PlayPlugin {
         Class<?>[] enhancers = new Class[]{
             SigEnhancer.class,
             ControllersEnhancer.class,
+            
             ContinuationEnhancer.class,
+            LVEnhancer.class,
             MailerEnhancer.class,
-            PropertiesEnhancer.class,
-            LocalvariablesNamesEnhancer.class
+            PropertiesEnhancer.class
         };
         for (Class<?> enhancer : enhancers) {
             try {

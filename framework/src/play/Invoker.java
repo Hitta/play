@@ -16,9 +16,9 @@ import com.jamonapi.MonitorFactory;
 import java.util.ArrayList;
 
 import play.Play.Mode;
-import play.classloading.enhancers.LocalvariablesNamesEnhancer.LocalVariablesNamesTracer;
 import play.exceptions.PlayException;
 import play.exceptions.UnexpectedException;
+import play.i18n.Lang;
 import play.libs.F;
 import play.libs.F.Promise;
 import play.utils.PThreadFactory;
@@ -178,6 +178,17 @@ public class Invoker {
          */
         public abstract void execute() throws Exception;
 
+
+        /**
+         * Needs this method to do stuff *before* init() is executed.
+         * The different Invocation-implementations does a lot of stuff in init()
+         * and they might do it before calling super.init()
+         */
+        protected void preInit() {
+            // clear language for this request - we're resolving it later when it is needed
+            Lang.clear();
+        }
+
         /**
          * Init the call (especially usefull in DEV mode to detect changes)
          */
@@ -211,7 +222,6 @@ public class Invoker {
          */
         public void after() {
             Play.pluginCollection.afterInvocation();
-            LocalVariablesNamesTracer.checkEmpty(); // detect bugs ....
         }
 
         /**
@@ -260,6 +270,7 @@ public class Invoker {
                 waitInQueue.stop();
             }
             try {
+                preInit();
                 if (init()) {
                     before();
                     execute();

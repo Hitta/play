@@ -17,6 +17,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
 
+import org.apache.commons.lang.StringEscapeUtils;
 import org.codehaus.groovy.control.CompilationUnit;
 import org.codehaus.groovy.control.CompilationUnit.GroovyClassOperation;
 import org.codehaus.groovy.control.CompilerConfiguration;
@@ -31,7 +32,7 @@ import play.Logger;
 import play.Play;
 import play.Play.Mode;
 import play.classloading.BytecodeCache;
-import play.classloading.enhancers.LocalvariablesNamesEnhancer.LocalVariablesNamesTracer;
+import play.classloading.enhancers.LVEnhancer;
 import play.data.binding.Unbinder;
 import play.exceptions.ActionNotFoundException;
 import play.exceptions.NoRouteFoundException;
@@ -264,7 +265,19 @@ public class GroovyTemplate extends BaseTemplate {
             layoutArgs.remove("out");
             layoutArgs.put("_isLayout", true);
             String layoutR = layout.get().internalRender(layoutArgs);
-            return layoutR.replace("____%LAYOUT%____", writer.toString().trim());
+
+            // Must replace '____%LAYOUT%____' inside the string layoutR with the content from writer..
+            final String whatToFind = "____%LAYOUT%____";
+            final int pos = layoutR.indexOf(whatToFind);
+            if (pos >=0) {
+                // prepending and appending directly to writer/buffer to prevent us
+                // from having to duplicate the string.
+                // this makes us use half of the memory!
+                writer.getBuffer().insert(0,layoutR.substring(0,pos));
+                writer.append(layoutR.substring(pos+whatToFind.length()));
+                return writer.toString().trim();
+            }
+            return layoutR;
         }
         if (writer != null) {
             return writer.toString();
@@ -388,10 +401,16 @@ public class GroovyTemplate extends BaseTemplate {
             if (val != null) {
                 if (val instanceof RawData) {
                     return ((RawData) val).data;
-                } else if (!template.name.endsWith(".html") || TagContext.hasParentTag("verbatim")) {
+                } else if (TagContext.hasParentTag("verbatim")) {
                     return val.toString();
-                } else {
+                } else if (template.name.endsWith(".xml")) {
+                    return StringEscapeUtils.escapeXml(val.toString());
+                } else if (template.name.endsWith(".csv")) {
+                    return StringEscapeUtils.escapeCsv(val.toString());
+                } else if (template.name.endsWith(".html")) {
                     return HTML.htmlEscape(val.toString());
+                } else {
+                    return val.toString();
                 }
             } else {
                 return "";
@@ -399,10 +418,20 @@ public class GroovyTemplate extends BaseTemplate {
         }
 
         public String __getMessage(Object[] val) {
+            if (val==null) {
+                throw new NullPointerException("You are trying to resolve a message with an expression " +
+                        "that is resolved to null - " +
+                        "have you forgotten quotes around the message-key?");
+            }
             if (val.length == 1) {
                 return Messages.get(val[0]);
             } else {
-                return Messages.get(val[0], Arrays.copyOfRange(val,1,val.length));
+                // extract args from val
+                Object[] args = new Object[val.length-1];
+                for( int i=1;i<val.length;i++) {
+                    args[i-1] = val[i];
+                }
+                return Messages.get(val[0], args);
             }
         }
 
@@ -472,7 +501,7 @@ public class GroovyTemplate extends BaseTemplate {
                     try {
                         Map<String, Object> r = new HashMap<String, Object>();
                         Method actionMethod = (Method) ActionInvoker.getActionMethod(action)[1];
-                        String[] names = (String[]) actionMethod.getDeclaringClass().getDeclaredField("$" + actionMethod.getName() + LocalVariablesNamesTracer.computeMethodHash(actionMethod.getParameterTypes())).get(null);
+                        String[] names = (String[]) actionMethod.getDeclaringClass().getDeclaredField("$" + actionMethod.getName() + LVEnhancer.computeMethodHash(actionMethod.getParameterTypes())).get(null);
                         if (param instanceof Object[]) {
                             if(((Object[])param).length == 1 && ((Object[])param)[0] instanceof Map) {
                                 r = (Map<String,Object>)((Object[])param)[0];

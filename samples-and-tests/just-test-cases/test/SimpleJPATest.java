@@ -14,6 +14,8 @@ public class SimpleJPATest extends UnitTest {
 
     @Test
     public void testImport() {
+        List<User> f = User.find("byNameLike", "%").fetch();
+        assertEquals(2, f.size());
         assertEquals(2, User.count());
         List<User> users = User.findAll();
         User a = users.get(0);
@@ -149,6 +151,32 @@ public class SimpleJPATest extends UnitTest {
         assertEquals(b, User.find("from User order by b DESC").first());
         assertEquals(b, User.find("from User order by j ASC").first());
         assertEquals(a, User.find("from User order by j DESC").first());
+    }
+    
+    @Test
+    public void verifyCountWithCompositeKey() {
+        
+        List<DataWithCompositeKey> list = DataWithCompositeKey.findAll();
+        for (DataWithCompositeKey d : list) {
+            d.delete();
+        }
+        DataWithCompositeKey d = new DataWithCompositeKey();
+        d.key1 = "1";
+        d.key2 = "1";
+        d.save();
+        
+        d = new DataWithCompositeKey();
+        d.key1 = "1";
+        d.key2 = "2";
+        d.save();
+        
+        assertEquals(2l, DataWithCompositeKey.count());
+        assertEquals(2l, DataWithCompositeKey.count(""));
+
+        d =  DataWithCompositeKey.findById(new DataWithCompositeKey("1", "2"));
+        assertEquals("1", d.key1);
+        assertEquals("2", d.key2);
+
     }
     
 }

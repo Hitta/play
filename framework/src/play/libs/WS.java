@@ -2,10 +2,13 @@ package play.libs;
 
 import java.io.File;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +26,7 @@ import play.libs.F.Promise;
 import play.libs.OAuth.ServiceInfo;
 import play.libs.ws.WSAsync;
 import play.libs.ws.WSUrlFetch;
+import play.mvc.Http;
 import play.mvc.Http.Header;
 import play.utils.HTTP;
 import play.utils.NoOpEntityResolver;
@@ -224,7 +228,7 @@ public class WS extends PlayPlugin {
         public Object body;
         public FileParam[] fileParams;
         public Map<String, String> headers = new HashMap<String, String>();
-        public Map<String, Object> parameters = new HashMap<String, Object>();
+        public Map<String, Object> parameters = new LinkedHashMap<String, Object>();
         public String mimeType;
         public boolean followRedirects = true;
         /**
@@ -238,21 +242,11 @@ public class WS extends PlayPlugin {
 
         public WSRequest() {
             this.encoding = Play.defaultWebEncoding;
-            setDefaultContentType();
         }
 
         public WSRequest(String url, String encoding) {
             this.url = url;
             this.encoding = encoding;
-            setDefaultContentType();
-        }
-
-        /**
-         * Sets the contentType-header.
-         * If user sets it again, it is his responsability to make sure the encoding-stuff is ok
-         */
-        private void setDefaultContentType() {
-            headers.put("Content-Type", "application/x-www-form-urlencoded; charset="+encoding);
         }
 
         /**
@@ -364,7 +358,7 @@ public class WS extends PlayPlugin {
          * @return the WSRequest for chaining.
          */
         public WSRequest setHeader(String name, String value) {
-            this.headers.put(name, value);
+            this.headers.put( HTTP.fixCaseForHttpHeader(name), value);
             return this;
         }
 
@@ -543,6 +537,13 @@ public class WS extends PlayPlugin {
          * @return the status code of the http response
          */
         public abstract Integer getStatus();
+
+        /**
+         * @return true if the status code is 20x, false otherwise
+         */
+        public boolean success() {
+            return Http.StatusCode.success(this.getStatus());
+        }
 
         /**
          * The http response content type
