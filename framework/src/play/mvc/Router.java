@@ -363,7 +363,7 @@ public class Router {
                             to = base + to;
                         }
                     }
-                    return to;
+                    return removeContextPath(to);
                 }
             }
         }
@@ -519,6 +519,7 @@ public class Router {
                         if (qs.endsWith("&")) {
                             qs = qs.substring(0, qs.length() - 1);
                         }
+                        path = removeContextPath(path);
                         ActionDefinition actionDefinition = new ActionDefinition();
                         actionDefinition.url = qs.length() == 0 ? path : path + "?" + qs;
                         actionDefinition.method = route.method == null || route.method.equals("*") ? "GET" : route.method.toUpperCase();
@@ -534,6 +535,11 @@ public class Router {
         throw new NoRouteFoundException(action, args);
     }
 
+    private static String removeContextPath(String path) {
+        return Http.Request.current().headers.containsKey("x-play-remove-context-path")
+            ? path.replaceFirst("^"+Play.ctxPath, "") : path;
+    }
+        
     public static class ActionDefinition {
 
         /**
