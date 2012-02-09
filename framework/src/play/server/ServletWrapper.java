@@ -221,9 +221,8 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
 
     public static Request parseRequest(HttpServletRequest httpServletRequest) throws Exception {
 
-        URI uri = new URI(httpServletRequest.getRequestURI());
         String method = httpServletRequest.getMethod().intern();
-        String path = uri.getRawPath();
+        String path = httpServletRequest.getRequestURI();
         if (path != null ) {
             path = URLDecoder.decode(path, "utf-8");
         }
@@ -245,7 +244,7 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
         InputStream body = httpServletRequest.getInputStream();
         boolean secure = httpServletRequest.isSecure();
 
-        String url = uri.toString() + (httpServletRequest.getQueryString() == null ? "" : "?" + httpServletRequest.getQueryString());
+        String url = httpServletRequest.getRequestURI() + (httpServletRequest.getQueryString() == null ? "" : "?" + httpServletRequest.getQueryString());
         String host = httpServletRequest.getHeader("host");
         int port = 0;
         String domain = null;
