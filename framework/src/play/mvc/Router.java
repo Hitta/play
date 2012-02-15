@@ -47,6 +47,8 @@ public class Router {
      */
     public static void load(String prefix) {
         routes.clear();
+        actionRoutesMap.clear();
+        
         parse(Play.routes, prefix);
         lastLoading = System.currentTimeMillis();
         // Plugins
@@ -74,7 +76,27 @@ public class Router {
         if (position > routes.size()) {
             position = routes.size();
         }
-        routes.add(position, getRoute(method, path, action, params, headers));
+        Route route = getRoute(method, path, action, params, headers);
+        routes.add(position, route);
+        addToActionRoutesMap(route);
+    }
+
+    private static void addToActionRoutesMap(Route route)
+    {
+        if(route.actionPattern != null)
+        {
+            String key = route.actionPattern.toString().replace("[.]", ".");
+            if(actionRoutesMap.containsKey(key))
+            {
+                actionRoutesMap.get(key).add(route);
+            }
+            else
+            {
+                List<Route> list = new ArrayList<Route>();
+                list.add(route);
+                actionRoutesMap.put(key, list);
+            }
+        }
     }
 
     /**
@@ -117,7 +139,9 @@ public class Router {
      * we want the method to append the routes to the list.
      */
     public static void appendRoute(String method, String path, String action, String params, String headers, String sourceFile, int line) {
-        routes.add(getRoute(method, path, action, params, headers, sourceFile, line));
+        Route route = getRoute(method, path, action, params, headers, sourceFile, line);
+    	routes.add(route);
+        addToActionRoutesMap(route);
     }
 
     public static Route getRoute(String method, String path, String action, String params, String headers) {
@@ -142,7 +166,9 @@ public class Router {
      * Add a new route at the beginning of the route list
      */
     public static void prependRoute(String method, String path, String action, String params, String headers) {
-        routes.add(0, getRoute(method, path, action, params, headers));
+    	Route route = getRoute(method, path, action, params, headers);
+    	routes.add(0, route);
+        addToActionRoutesMap(route);
     }
 
     /**
@@ -230,6 +256,7 @@ public class Router {
      * All the loaded routes.
      */
     public static List<Route> routes = new ArrayList<Route>(500);
+    public static Map<String, List<Route>> actionRoutesMap = new HashMap<String, List<Route>>(500);
 
     public static void routeOnlyStatic(Http.Request request) {
         for (Route route : routes) {
@@ -393,8 +420,10 @@ public class Router {
                 }
             }
         }
-        for (Route route : routes) {
-            if (route.actionPattern != null) {
+        
+        List<Route> routeList = actionRoutesMap.get(action);
+        if (routeList != null) {
+            for (Route route : routeList) {
                 Matcher matcher = route.actionPattern.matcher(action);
                 if (matcher.matches()) {
                     for (String group : route.actionArgs) {
