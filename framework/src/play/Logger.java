@@ -63,13 +63,7 @@ public class Logger {
             shutUp.setProperty("log4j.rootLogger", "OFF");
             PropertyConfigurator.configure(shutUp);
         } else if (Logger.log4j == null) {
-
-            if (log4jConf.getFile().indexOf(Play.applicationPath.getAbsolutePath()) == 0) {
-                // The log4j configuration file is located somewhere in the application folder,
-                // so it's probably a custom configuration file
-                configuredManually = true;
-            }
-
+            configuredManually = true;
             PropertyConfigurator.configure(log4jConf);
             Logger.log4j = org.apache.log4j.Logger.getLogger("play");
             // In test mode, append logs to test-result/application.log
