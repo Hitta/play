@@ -770,5 +770,8 @@ public class Play {
         return id.matches("test|test-?.*");
     }
     
-
+    public static boolean proxyServerHasAddedContext()
+    {
+        return Http.Request.current().headers.containsKey("x-play-remove-context-path");
+    }
 }

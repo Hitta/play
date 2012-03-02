@@ -565,8 +565,7 @@ public class Router {
     }
 
     private static String removeContextPath(String path) {
-        return Http.Request.current().headers.containsKey("x-play-remove-context-path")
-            ? path.replaceFirst("^"+Play.ctxPath, "") : path;
+        return Play.proxyServerHasAddedContext() ? path.replaceFirst("^"+Play.ctxPath, "") : path;
     }
         
     public static class ActionDefinition {
