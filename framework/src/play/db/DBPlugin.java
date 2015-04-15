@@ -1,6 +1,9 @@
 package play.db;
 
 import com.mchange.v2.c3p0.ConnectionCustomizer;
+
+import java.sql.SQLFeatureNotSupportedException;
+
 import play.Play;
 import play.PlayPlugin;
 import play.mvc.Http;
@@ -26,16 +29,27 @@ public class DBPlugin extends PlayPlugin {
     @Override
     public boolean rawInvocation(Request request, Response response) throws Exception {
         if (Play.mode.isDev() && request.path.equals("/@db")) {
-            response.status = Http.StatusCode.MOVED;
+            response.status = Http.StatusCode.FOUND;
+            String serverOptions[] = new String[] { };
 
             // For H2 embeded database, we'll also start the Web console
             if (h2Server != null) {
                 h2Server.stop();
             }
-            h2Server = org.h2.tools.Server.createWebServer();
+
+            String domain = request.domain;
+            if (domain.equals("")) {
+                domain = "localhost";
+            }
+
+            if (!domain.equals("localhost")) {
+                serverOptions = new String[] {"-webAllowOthers"};
+            }
+            
+            h2Server = org.h2.tools.Server.createWebServer(serverOptions);
             h2Server.start();
 
-            response.setHeader("Location", "http://localhost:8082/");
+            response.setHeader("Location", "http://" + domain + ":8082/");
             return true;
         }
         return false;
@@ -125,13 +139,6 @@ public class DBPlugin extends PlayPlugin {
             this.driver = d;
         }
 
-        /*
-         * JDK 7 compatibility
-         */
-        public Logger getParentLogger() {
-            return null;
-        }
-
         public boolean acceptsURL(String u) throws SQLException {
             return this.driver.acceptsURL(u);
         }
@@ -154,6 +161,17 @@ public class DBPlugin extends PlayPlugin {
 
         public boolean jdbcCompliant() {
             return this.driver.jdbcCompliant();
+        }
+      
+        // Method not annotated with @Override since getParentLogger() is a new method
+        // in the CommonDataSource interface starting with JDK7 and this annotation
+        // would cause compilation errors with JDK6.
+        public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
+            try {
+                return (java.util.logging.Logger) Driver.class.getDeclaredMethod("getParentLogger").invoke(this.driver);
+            } catch (Throwable e) {
+                return null;
+            }
         }
     }
 

@@ -17,7 +17,7 @@ bc. application.baseUrl=http://localhost:9000/
 
 For @prod@ mode:
 
-bc. %production%.application.baseUrl=http://www.yourdomain.com/
+bc. %production.application.baseUrl=http://www.yourdomain.com/
 
 
 h3(#application.defaultCookieDomain). application.defaultCookieDomain
@@ -350,6 +350,13 @@ Database connection user name, used with "db.url":#db.url.
 
 Default: none, or @sa@ when "db":#db is set to @mem@ or @fs@. 
 
+h3(#db.testquery). db.testquery
+
+Override query to use when keepalive connection polling is being performed. The default value will cause keepalive to fetch metadata. This means it does a getTables() which can be a heavy operation on a busy databse. 
+
+Default: null  
+Default on MySQL: /* ping */ SELECT 1
+
 
 h2(#evolutions). Database evolutions
 
@@ -362,6 +369,31 @@ bc. evolutions.enabled=false
 
 Default: @true@
 
+
+
+h3(#modules.evolutions.enabled). modules.evolutions.enabled
+
+Used to disable "database evolutions":evolutions from all modules
+
+bc. modules.evolutions.enabled=false
+
+Default: @true@
+
+h3(#[module name].evolutions.enabled). [module name].evolutions.enabled
+
+Used to disable "database evolutions":evolutions from a given module
+
+bc. [module name].evolutions.enabled=false
+
+Default: @true@
+
+h3(#evolution.PLAY_EVOLUTIONS.textType). evolution.PLAY_EVOLUTIONS.textType
+
+If you are having problems with the default datatype text (clob for Oracle), you can specify your own datatype 
+
+bc. evolution.PLAY_EVOLUTIONS.textType=clob
+
+Default: @clob@
 
 h2(#test). Test runner
 
@@ -474,6 +506,18 @@ Proxy user for web services requests.
 Default: @http.proxyUser@ system property.
 
 
+h3(#http.nonProxyHosts). http.nonProxyHosts
+
+Indicates the hosts which should be connected to directly and not through the proxy server.
+The value can be a list of hosts, each seperated by a @|@, and in addition a wildcard character @*@ can be used for matching.
+
+For example:
+
+bc. http.nonProxyHosts=localhost|*.example.com
+
+Default: @http.nonProxyHosts@ system property.
+
+
 
 h3(#http.useETag). http.useETag
 
@@ -509,11 +553,11 @@ h3(#java.source). java.source
 
 Java source level, which overrides the @java.version@ system property. For example:
 
-bc. java.source=1.6
+bc. java.source=1.7
 
-Values:  @1.5@, @1.6@, @1.7@ (experimental).
+Values:  @1.5@ (No longer supported since 1.3.0), @1.6@, @1.7@, @1.8@ (experimental).
 
-Default: @1.5@
+Default: @1.6@
 
 
 h2(#jpa). JPA
@@ -809,6 +853,15 @@ HTTP server maximum content length for response streaming, in bytes.
 Default: none - no maximum.
 
 
+h3(#play.ssl.enabledCiphers). play.ssl.enabledCiphers
+
+This setting allows to specify certain SSL ciphers to be used. This might be needed in case you have to be PCI compliant, as some ciphers in the default settings are vulnerable to the so-called BEAST attack.
+
+bc. play.ssl.enabledCiphers=SSL_RSA_WITH_RC4_128_MD5,SSL_RSA_WITH_RC4_128_SHA
+
+Default: none - the default ciphers are chosen.
+
+
 h3(#play.pool). play.pool
 
 Execution pool size. Try to keep this as low as possible. Setting this to 1 thread will serialise all requests (very useful for debugging purpose). For example:
@@ -894,7 +947,7 @@ bc. XForwardedProto=https
 
 h3(#XForwardedSupport). XForwardedSupport
 
-A comma-separated list of IP addresses that are allowed @X-Forwarded-For@ HTTP request header values, used to restrict local addresses when an @X-Forwarded-For@ request header is set by a proxy server.
+A comma-separated list of IP addresses that are allowed @X-Forwarded-For@ HTTP request header values, used to restrict local addresses when an @X-Forwarded-For@ request header is set by a proxy server. Alternatively you can use 'ALL' if you do not want to restrict local addresses. **Note**: only use 'ALL' if you are very sure that if it safe to do so (e.g. you have a proper firewall in place that blocks public requests). A valid use-case would be when using Play! behind a Amazon ELB loadbalancer, which internal IP's tend to change over time.      
 
 Default: @127.0.0.1@
 

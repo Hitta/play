@@ -8,6 +8,7 @@ import java.util.*;
 import play.Logger;
 import play.Play;
 import play.cache.Cache;
+import play.jobs.Job;
 import play.libs.IO;
 import play.libs.Mail;
 import play.mvc.*;
@@ -25,20 +26,42 @@ public class TestRunner extends Controller {
         render(unitTests, functionalTests, seleniumTests);
     }
 
-    public static void list() {
+    public static void list(Boolean runUnitTests, Boolean runFunctionalTests, Boolean runSeleniumTests) {
         StringWriter list = new StringWriter();
         PrintWriter p = new PrintWriter(list);
         p.println("---");
         p.println(Play.getFile("test-result").getAbsolutePath());
         p.println(Router.reverse(Play.modules.get("_testrunner").child("/public/test-runner/selenium/TestRunner.html")));
-        for(Class c : TestEngine.allUnitTests()) {
-            p.println(c.getName() + ".class");
+        
+        List<Class> unitTests = null;
+        List<Class> functionalTests =  null;
+        List<String> seleniumTests = null;
+        // Check configuration of test
+        // method parameters have priority on configuration param
+        if (runUnitTests == null || runUnitTests) {
+            unitTests = TestEngine.allUnitTests();
         }
-        for(Class c : TestEngine.allFunctionalTests()) {
-            p.println(c.getName() + ".class");
+        if (runFunctionalTests == null || runFunctionalTests) {
+            functionalTests = TestEngine.allFunctionalTests();
         }
-        for(String c : TestEngine.allSeleniumTests()) {
-            p.println(c);
+        if (runSeleniumTests == null || runSeleniumTests) {
+            seleniumTests = TestEngine.allSeleniumTests();
+        }
+        
+        if(unitTests != null){
+            for(Class c : unitTests) {
+                p.println(c.getName() + ".class");
+            }
+        }
+        if(functionalTests != null){
+            for(Class c : functionalTests) {
+                p.println(c.getName() + ".class");
+            }
+        }
+        if(seleniumTests != null){
+            for(String c : seleniumTests) {
+                p.println(c);
+            }
         }
         renderText(list);
     }
@@ -63,7 +86,13 @@ public class TestRunner extends Controller {
         }
         if (test.endsWith(".class")) {
             Play.getFile("test-result").mkdir();
-            TestEngine.TestResults results = TestEngine.run(test.substring(0, test.length() - 6));
+            final String testname = test.substring(0, test.length() - 6);
+            final TestEngine.TestResults results = await(new Job<TestEngine.TestResults>() {
+                @Override
+                public TestEngine.TestResults doJobWithResult() throws Exception {
+                    return TestEngine.run(testname);
+                }
+            }.now());
             response.status = results.passed ? 200 : 500;
             Template resultTemplate = TemplateLoader.load("TestRunner/results.html");
             Map<String, Object> options = new HashMap<String, Object>();

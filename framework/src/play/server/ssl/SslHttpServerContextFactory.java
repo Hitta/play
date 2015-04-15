@@ -6,13 +6,16 @@ import org.bouncycastle.openssl.PasswordFinder;
 import play.Logger;
 import play.Play;
 
-import java.security.cert.X509Certificate;
 import javax.net.ssl.*;
 import java.io.FileInputStream;
 import java.io.FileReader;
 import java.net.Socket;
 import java.security.*;
+import java.security.cert.X509Certificate;
 import java.util.Properties;
+import java.util.Vector;
+
+import static org.apache.commons.io.IOUtils.closeQuietly;
 
 public class SslHttpServerContextFactory {
 
@@ -77,13 +80,15 @@ public class SslHttpServerContextFactory {
 
         static PEMKeyManager instance = new PEMKeyManager();
         PrivateKey key;
-        X509Certificate cert;
+        X509Certificate[] chain;
 
         public PEMKeyManager() {
+            PEMReader keyReader = null;
+            PEMReader reader = null;
             try {
                 final Properties p = Play.configuration;
 
-                PEMReader keyReader = new PEMReader(new FileReader(Play.getFile(p.getProperty("certificate.key.file",
+                keyReader = new PEMReader(new FileReader(Play.getFile(p.getProperty("certificate.key.file",
                                                                                                "conf/host.key"))),
                                                     new PasswordFinder() {
                     public char[] getPassword() {
@@ -92,11 +97,21 @@ public class SslHttpServerContextFactory {
                 });
                 key = ((KeyPair) keyReader.readObject()).getPrivate();
 
-                PEMReader reader = new PEMReader(new FileReader(Play.getFile(p.getProperty("certificate.file", "conf/host.cert"))));
-                cert = (X509Certificate) reader.readObject();
+                reader = new PEMReader(new FileReader(Play.getFile(p.getProperty("certificate.file", "conf/host.cert"))));
+
+        		X509Certificate cert;
+        		Vector chainVector = new Vector();
+        
+        		while ((cert = (X509Certificate) reader.readObject()) != null) {
+        		    chainVector.add(cert);
+        		}
+        		chain = (X509Certificate[])chainVector.toArray(new X509Certificate[1]);
             } catch (Exception e) {
                 e.printStackTrace();
                 Logger.error(e, "");
+            } finally {
+                closeQuietly(keyReader);
+                closeQuietly(reader);
             }
         }
 
@@ -121,7 +136,7 @@ public class SslHttpServerContextFactory {
         }
 
         public X509Certificate[] getCertificateChain(String s) {
-            return new X509Certificate[]{cert};
+            return chain;
         }
 
         public PrivateKey getPrivateKey(String s) {

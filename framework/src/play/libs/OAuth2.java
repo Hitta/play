@@ -3,6 +3,7 @@ package play.libs;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.google.gson.JsonElement;
 import play.mvc.Http.Request;
 import play.mvc.Scope.Params;
 import play.mvc.results.Redirect;
@@ -18,6 +19,9 @@ import com.google.gson.JsonObject;
  */
 public class OAuth2 {
 
+	private static final String CLIENT_ID_NAME = "client_id";
+	private static final String REDIRECT_URI = "redirect_uri";
+	
     public String authorizationURL;
     public String accessTokenURL;
     public String clientid;
@@ -37,17 +41,46 @@ public class OAuth2 {
         return Params.current().get("code") != null;
     }
 
-    /**
-     * First step of the OAuth2 process: redirects the user to the authorization page
-     *
-     * @param callbackURL
-     */
-    public void retrieveVerificationCode(String callbackURL) {
-        throw new Redirect(authorizationURL
-                + "?client_id=" + clientid
-                + "&redirect_uri=" + callbackURL);
-    }
+	/**
+	 * First step of the OAuth2 process: redirects the user to the authorisation page
+	 * 
+	 * @param callbackURL
+	 */
+	public void retrieveVerificationCode(String callbackURL) {
+		retrieveVerificationCode(callbackURL, new HashMap<String, String>());
+	}
 
+	/**
+	 * First step of the oAuth2 process. This redirects the user to the authorization page on the oAuth2 provider. This is a helper method that only takes one parameter name,value pair and then
+	 * converts them into a map to be used by {@link #retrieveVerificationCode(String, Map)}
+	 * 
+	 * @param callbackURL
+	 *            The URL to redirect the user to after authorization
+	 * @param parameterName 
+	 *                      An additional parameter name
+	 * @param parameterValue
+	 *            An additional parameter value
+	 */
+	public void retrieveVerificationCode(String callbackURL, String parameterName, String parameterValue) {
+		Map<String, String> parameters = new HashMap<String, String>();
+		parameters.put(parameterName, parameterValue);
+		retrieveVerificationCode(callbackURL, parameters);
+	}
+	
+	/**
+	 * First step of the oAuth2 process. This redirects the user to the authorisation page on the oAuth2 provider.
+	 * 
+	 * @param callbackURL
+	 *            The URL to redirect the user to after authorisation
+	 * @param parameters
+	 *            Any additional parameters that weren't included in the constructor. For example you might need to add a response_type.
+	 */
+	public void retrieveVerificationCode(String callbackURL, Map<String, String> parameters) {
+		parameters.put(CLIENT_ID_NAME, clientid);
+		parameters.put(REDIRECT_URI, callbackURL);
+		throw new Redirect(authorizationURL, parameters);
+	}
+    
     public void retrieveVerificationCode() {
         retrieveVerificationCode(Request.current().getBase() + Request.current().url);
     }
@@ -94,17 +127,23 @@ public class OAuth2 {
         }
         public Response(WS.HttpResponse response) {
             this.httpResponse = response;
-            Map<String, String> querystring = response.getQueryString();
-            if (querystring.containsKey("access_token")) {
-                this.accessToken = querystring.get("access_token");
+            this.accessToken = getAccessToken(response);
+            if (this.accessToken != null) {
                 this.error = null;
             } else {
-                this.accessToken = null;
                 this.error = Error.oauth2(response);
             }
         }
         public static Response error(Error error, WS.HttpResponse response) {
             return new Response(null, error, response);
+        }
+        private String getAccessToken(WS.HttpResponse httpResponse) {
+            if(httpResponse.getContentType().contains("application/json")) {
+                JsonElement accessToken = httpResponse.getJson().getAsJsonObject().get("access_token");
+                return accessToken != null ? accessToken.getAsString() : null;
+            } else {
+                return httpResponse.getQueryString().get("access_token");
+            }
         }
     }
 

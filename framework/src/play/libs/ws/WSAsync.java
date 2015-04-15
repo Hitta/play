@@ -58,6 +58,7 @@ public class WSAsync implements WSImpl {
         String proxyPort = Play.configuration.getProperty("http.proxyPort", System.getProperty("http.proxyPort"));
         String proxyUser = Play.configuration.getProperty("http.proxyUser", System.getProperty("http.proxyUser"));
         String proxyPassword = Play.configuration.getProperty("http.proxyPassword", System.getProperty("http.proxyPassword"));
+        String nonProxyHosts = Play.configuration.getProperty("http.nonProxyHosts", System.getProperty("http.nonProxyHosts"));
         String userAgent = Play.configuration.getProperty("http.userAgent");
 
         Builder confBuilder = new AsyncHttpClientConfig.Builder();
@@ -70,6 +71,12 @@ public class WSAsync implements WSImpl {
                 throw new IllegalStateException("WS proxy is misconfigured -- check the logs for details");
             }
             ProxyServer proxy = new ProxyServer(proxyHost, proxyPortInt, proxyUser, proxyPassword);
+            if (nonProxyHosts != null) {
+                final String[] strings = nonProxyHosts.split("\\|");
+                for (String uril : strings) {
+                    proxy.addNonProxyHost(uril);
+                }
+            }
             confBuilder.setProxyServer(proxy);
         }
         if (userAgent != null) {
@@ -458,10 +465,9 @@ public class WSAsync implements WSImpl {
                         }
                     }
                     try {
-                        byte[] bodyBytes = sb.toString().getBytes( this.encoding );
-                        InputStream bodyInStream = new ByteArrayInputStream( bodyBytes );
-                        builder.setBody( bodyInStream );
-                    } catch ( UnsupportedEncodingException e) {
+                        byte[] bodyBytes = sb.toString().getBytes(this.encoding);
+                        builder.setBody(bodyBytes);
+                    } catch (UnsupportedEncodingException e) {
                         throw new RuntimeException(e);
                     }
 
@@ -489,14 +495,13 @@ public class WSAsync implements WSImpl {
                 if (this.parameters != null && !this.parameters.isEmpty()) {
                     throw new RuntimeException("POST or PUT method with parameters AND body are not supported.");
                 }
-                if(this.body instanceof InputStream) {
+                if (this.body instanceof InputStream) {
                     builder.setBody((InputStream)this.body);
                 } else {
                     try {
-                        byte[] bodyBytes = this.body.toString().getBytes( this.encoding );
-                        InputStream bodyInStream = new ByteArrayInputStream( bodyBytes );
-                        builder.setBody( bodyInStream );
-                    } catch ( UnsupportedEncodingException e) {
+                        byte[] bodyBytes = this.body.toString().getBytes(this.encoding);
+                        builder.setBody(bodyBytes);
+                    } catch (UnsupportedEncodingException e) {
                         throw new RuntimeException(e);
                     }
                 }
@@ -540,7 +545,7 @@ public class WSAsync implements WSImpl {
 
         /**
          * you shouldnt have to create an HttpResponse yourself
-         * @param method
+         * @param response
          */
         public HttpAsyncResponse(Response response) {
             this.response = response;
@@ -553,6 +558,15 @@ public class WSAsync implements WSImpl {
         @Override
         public Integer getStatus() {
             return this.response.getStatusCode();
+        }
+
+        /**
+         * the HTTP status text
+         * @return the status text of the http response
+         */
+        @Override
+        public String getStatusText() {
+            return this.response.getStatusText();
         }
 
         @Override

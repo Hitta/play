@@ -1,5 +1,6 @@
 package play.server;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import play.Invoker;
 import play.Invoker.InvocationContext;
@@ -33,8 +34,11 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.*;
 import java.net.URI;
 import java.net.URLDecoder;
+import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.util.*;
+
+import static org.apache.commons.io.IOUtils.closeQuietly;
 
 /**
  * Servlet implementation.
@@ -64,9 +68,10 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
 
     public void contextInitialized(ServletContextEvent e) {
         Play.standalonePlayServer = false;
+        ClassLoader oldClassLoader = Thread.currentThread().getContextClassLoader();
         String appDir = e.getServletContext().getRealPath("/WEB-INF/application");
         File root = new File(appDir);
-        final String playId = e.getServletContext().getInitParameter("play.id");
+        final String playId = System.getProperty("play.id", e.getServletContext().getInitParameter("play.id"));
         if (StringUtils.isEmpty(playId)) {
             throw new UnexpectedException("Please define a play.id parameter in your web.xml file. Without that parameter, play! cannot start your application. Please add a context-param into the WEB-INF/web.xml file.");
         }
@@ -83,6 +88,8 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
         if (isGreaterThan(e.getServletContext(), 2, 4)) {
             loadRouter(e.getServletContext().getContextPath());
         }
+
+        Thread.currentThread().setContextClassLoader(oldClassLoader);
     }
 
     public void contextDestroyed(ServletContextEvent e) {
@@ -150,6 +157,9 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
             }
             serveStatic(httpServletResponse, httpServletRequest, e);
             return;
+        } catch(URISyntaxException e) {
+			 serve404(httpServletRequest, httpServletResponse, new NotFound(e.toString()));
+	         return;
         } catch (Throwable e) {
             throw new ServletException(e);
         } finally {
@@ -186,11 +196,12 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
                 } else {
                     long last = file.lastModified();
                     String etag = "\"" + last + "-" + file.hashCode() + "\"";
-                    if (!isModified(etag, last, servletRequest)) {
+                    String lastDate = Utils.getHttpDateFormatter().format(new Date(last));
+                    if (!isModified(etag, lastDate, servletRequest)) {
                         servletResponse.setHeader("Etag", etag);
                         servletResponse.setStatus(304);
                     } else {
-                        servletResponse.setHeader("Last-Modified", Utils.getHttpDateFormatter().format(new Date(last)));
+                        servletResponse.setHeader("Last-Modified", lastDate);
                         servletResponse.setHeader("Cache-Control", "max-age=" + Play.configuration.getProperty("http.cacheControl", "3600"));
                         servletResponse.setHeader("Etag", etag);
                         copyStream(servletResponse, file.inputstream());
@@ -200,7 +211,7 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
         }
     }
 
-    public static boolean isModified(String etag, long last,
+    public static boolean isModified(String etag, String lastDate,
             HttpServletRequest request) {
         // See section 14.26 in rfc 2616 http://www.faqs.org/rfcs/rfc2616.html
         String browserEtag = request.getHeader(IF_NONE_MATCH);
@@ -211,22 +222,23 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
                 return true;
             }
             if (dateString != null) {
-                return !isValidTimeStamp(last, dateString);
+                return !isValidTimeStamp(lastDate, dateString);
             }
             return false;
         } else {
             if (dateString != null) {
-                return !isValidTimeStamp(last, dateString);
+                return !isValidTimeStamp(lastDate, dateString);
             } else {
                 return true;
             }
         }
     }
 
-    private static boolean isValidTimeStamp(long last, String dateString) {
+    private static boolean isValidTimeStamp(String lastDateString, String dateString) {
         try {
             long browserDate = Utils.getHttpDateFormatter().parse(dateString).getTime();
-            return browserDate >= last;
+            long lastDate = Utils.getHttpDateFormatter().parse(lastDateString).getTime();
+            return browserDate >= lastDate;
         } catch (ParseException e) {
             Logger.error("Can't parse date", e);
             return false;
@@ -234,8 +246,8 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
     }
 
     public static Request parseRequest(HttpServletRequest httpServletRequest) throws Exception {
-
-        URI uri = new URI(httpServletRequest.getRequestURI());
+	 	
+		URI uri = new URI(httpServletRequest.getRequestURI());
         String method = httpServletRequest.getMethod().intern();
         String path = uri.getPath();
         String querystring = httpServletRequest.getQueryString() == null ? "" : httpServletRequest.getQueryString();
@@ -495,15 +507,16 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
 
     }
 
-    private void copyStream(HttpServletResponse servletResponse, InputStream is) throws IOException {
-        OutputStream os = servletResponse.getOutputStream();
-        byte[] buffer = new byte[8096];
-        int read = 0;
-        while ((read = is.read(buffer)) > 0) {
-            os.write(buffer, 0, read);
+    private void copyStream(HttpServletResponse servletResponse, InputStream is) throws IOException {        
+        if (servletResponse != null && is != null) {
+            try {
+                OutputStream os = servletResponse.getOutputStream();
+                IOUtils.copyLarge(is, os);
+                os.flush();
+            } finally {
+                closeQuietly(is);
+            }
         }
-        os.flush();
-        is.close();
     }
 
     public class ServletInvocation extends Invoker.DirectInvocation {
@@ -564,3 +577,4 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
         }
     }
 }
+

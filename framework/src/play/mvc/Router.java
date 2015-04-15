@@ -156,8 +156,8 @@ public class Router {
      */
     static void parse(VirtualFile routeFile, String prefix) {
         String fileAbsolutePath = routeFile.getRealFile().getAbsolutePath();
-        String content = routeFile.contentAsString();
-        if (content.indexOf("${") > -1 || content.indexOf("#{") > -1 || content.indexOf("%{") > -1) {
+        String content = Play.usePrecompiled ? "" : routeFile.contentAsString();
+        if (Play.usePrecompiled || content.indexOf("${") > -1 || content.indexOf("#{") > -1 || content.indexOf("%{") > -1) {
             // Mutable map needs to be passed in.
             content = TemplateLoader.load(routeFile).render(new HashMap<String, Object>(16));
         }
@@ -327,7 +327,7 @@ public class Router {
     }
 
     // Gets baseUrl from current request or application.baseUrl in application.conf
-    protected static String getBaseUrl() {
+    public static String getBaseUrl() {
         if (Http.Request.current() == null) {
             // No current request is present - must get baseUrl from config
             String appBaseUrl = Play.configuration.getProperty("application.baseUrl", "application.baseUrl");
@@ -449,7 +449,7 @@ public class Router {
                                 List<Object> l = (List<Object>) value;
                                 value = l.get(0);
                             }
-                            if (!value.toString().startsWith(":") && !arg.constraint.matches(value.toString())) {
+                            if (!value.toString().startsWith(":") && !arg.constraint.matches(Utils.urlEncodePath(value.toString()))) {
                                 allRequiredArgsAreHere = false;
                                 break;
                             }
@@ -486,12 +486,20 @@ public class Router {
                                     List<Object> vals = (List<Object>) value;
                                     path = path.replaceAll("\\{(<[^>]+>)?" + key + "\\}", vals.get(0).toString()).replace("$", "\\$");
                                 } else {
-                                    path = path.replaceAll("\\{(<[^>]+>)?" + key + "\\}", value.toString().replace("$", "\\$").replace("%3A", ":").replace("%40", "@"));
-                                    host = host.replaceAll("\\{(<[^>]+>)?" + key + "\\}", value.toString().replace("$", "\\$").replace("%3A", ":").replace("%40", "@"));
+									try {
+                                    	path = path.replaceAll("\\{(<[^>]+>)?" + key + "\\}", URLEncoder.encode(value.toString(), encoding).replace("$", "\\$").replace("%3A", ":").replace("%40", "@"));
+                                    } catch(UnsupportedEncodingException e) {
+										path = path.replaceAll("\\{(<[^>]+>)?" + key + "\\}", value.toString().replace("$", "\\$").replace("%3A", ":").replace("%40", "@"));
+									}
+									try {
+										host = host.replaceAll("\\{(<[^>]+>)?" + key + "\\}", URLEncoder.encode(value.toString(), encoding).replace("$", "\\$").replace("%3A", ":").replace("%40", "@"));
+   								 	} catch(UnsupportedEncodingException e) {
+										host = host.replaceAll("\\{(<[^>]+>)?" + key + "\\}", value.toString().replace("$", "\\$").replace("%3A", ":").replace("%40", "@"));
+									}
                                 }
                             } else if (route.staticArgs.containsKey(key)) {
                                 // Do nothing -> The key is static
-                            } else if (Scope.RouteArgs.current() != null && Scope.RouteArgs.current().data.containsKey(key)) {
+                            } else if (!argsbackup.containsKey(key)) {
                                 // Do nothing -> The key is provided in RouteArgs and not used (see #447)
                             } else if (value != null) {
                                 if (List.class.isAssignableFrom(value.getClass())) {
@@ -672,6 +680,7 @@ public class Router {
                         Logger.warn("Static route cannot have a dynamic host name");
                         return;
                     }
+                    this.hostPattern = new Pattern(host.replaceAll("\\.", "\\\\."));
                 }
                 if (!method.equalsIgnoreCase("*") && !method.equalsIgnoreCase("GET")) {
                     Logger.warn("Static route only support GET method");

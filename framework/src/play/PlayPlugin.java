@@ -5,6 +5,8 @@ import com.google.gson.JsonObject;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -323,20 +325,20 @@ public abstract class PlayPlugin implements Comparable<PlayPlugin> {
     // ~~~~~
     public int compareTo(PlayPlugin o) {
         int res = index < o.index ? -1 : (index == o.index ? 0 : 1);
-        if (res!=0) {
+        if (res != 0) {
             return res;
         }
 
         // index is equal in both plugins.
-        // sort on classtype to get consistent order
+        // Sort on classtype to get consistent order
         res = this.getClass().getName().compareTo(o.getClass().getName());
-        if (res != 0 ) {
+        if (res != 0) {
             // classnames where different
             return res;
         }
 
-        // identical classnames.
-        // sort on instance to get consistent order.
+        // Identical classnames.
+        // Sort on instance to get consistent order.
         // We only return 0 (equal) if both identityHashCode are identical
         // which is only the case if both this and other are the same object instance.
         // This is consistent with equals() when no special equals-method is implemented.
@@ -352,5 +354,36 @@ public abstract class PlayPlugin implements Comparable<PlayPlugin> {
     public Object willBeValidated(Object value) {
         return null;
     }
-    
+
+    /**
+     * Implement to add some classes that should be considered unit tests but do not extend
+     * {@link org.junit.Assert} to tests that can be executed by test runner (will be visible in test UI).
+     * <p/>
+     * <strong>Note:</strong>You probably will also need to override {@link PlayPlugin#runTest(java.lang.Class)} method
+     * to handle unsupported tests execution properly.
+     * <p/>
+     * Keep in mind that this method can only add tests to currently loaded ones.
+     * You cannot disable tests this way. You should also make sure you do not duplicate already loaded tests.
+     * 
+     * @return list of plugin supported unit test classes (empty list in default implementation)
+     */
+    public Collection<Class> getUnitTests() {
+        return Collections.emptyList();
+    }
+
+    /**
+     * Implement to add some classes that should be considered functional tests but do not extend
+     * {@link play.test.FunctionalTest} to tests that can be executed by test runner (will be visible in test UI).
+     * <p/>
+     * <strong>Note:</strong>You probably will also need to override {@link PlayPlugin#runTest(java.lang.Class)} method
+     * to handle unsupported tests execution properly.
+     * <p/>
+     * Keep in mind that this method can only add tests to currently loaded ones.
+     * You cannot disable tests this way. You should also make sure you do not duplicate already loaded tests.
+     *
+     * @return list of plugin supported functional test classes (empty list in default implementation)
+     */
+    public Collection<Class> getFunctionalTests() {
+        return Collections.emptyList();
+    }
 }

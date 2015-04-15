@@ -1,12 +1,15 @@
 package play.classloading;
 
+import play.Logger;
+import play.Play;
+import play.PlayPlugin;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.security.MessageDigest;
-import play.Logger;
-import play.Play;
-import play.PlayPlugin;
+
+import static org.apache.commons.io.FileUtils.writeByteArrayToFile;
 
 /**
  * Used to speed up compilation time
@@ -49,7 +52,8 @@ public class BytecodeCache {
                 int offset = 0;
                 int read = -1;
                 StringBuilder hash = new StringBuilder();
-                while ((read = fis.read()) != 0) {
+                // look for null byte, or end-of file
+                while ((read = fis.read()) > 0) {
                     hash.append((char) read);
                     offset++;
                 }
@@ -88,10 +92,21 @@ public class BytecodeCache {
             }
             File f = cacheFile(name.replace("/", "_").replace("{", "_").replace("}", "_").replace(":", "_"));
             FileOutputStream fos = new FileOutputStream(f);
-            fos.write(hash(source).getBytes("utf-8"));
-            fos.write(0);
-            fos.write(byteCode);
-            fos.close();
+            try {
+                fos.write(hash(source).getBytes("utf-8"));
+                fos.write(0);
+                fos.write(byteCode);
+            }
+            finally {
+                fos.close();
+            }
+
+            // emit bytecode to standard class layout as well
+            if (!name.contains("/") && !name.contains("{")) {
+                f = new File(Play.tmpDir, "classes/" + name.replace(".", "/") + ".class");
+                f.getParentFile().mkdirs();
+                writeByteArrayToFile(f, byteCode);
+            }
 
             if (Logger.isTraceEnabled()) {
                 Logger.trace("%s cached", name);

@@ -1,15 +1,18 @@
 package play.mvc.results;
 
+import org.apache.commons.codec.net.URLCodec;
+import org.apache.commons.io.IOUtils;
+import play.exceptions.UnexpectedException;
+import play.libs.MimeTypes;
+import play.mvc.Http.Request;
+import play.mvc.Http.Response;
+
 import java.io.File;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
 
-import org.apache.commons.codec.net.URLCodec;
-import play.exceptions.UnexpectedException;
-import play.libs.MimeTypes;
-import play.mvc.Http.Request;
-import play.mvc.Http.Response;
+import static org.apache.commons.io.IOUtils.closeQuietly;
 
 /**
  * 200 OK with application/octet-stream
@@ -162,12 +165,12 @@ public class RenderBinary extends Result {
                         response.setHeader("Content-Length", length + "");
                         response.direct = is;
                     } else {
-                        byte[] buffer = new byte[8092];
-                        int count = 0;
-                        while ((count = is.read(buffer)) > 0) {
-                            response.out.write(buffer, 0, count);
+                        try {
+                            IOUtils.copyLarge(is, response.out);
                         }
-                        is.close();
+                        finally {
+                            closeQuietly(is);
+                        }
                     }
                 }
             }
