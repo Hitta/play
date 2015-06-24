@@ -229,6 +229,14 @@ class PlayApplication(object):
         if application_mode == 'prod':
             java_args.append('-server')
 
+        javaVersion = getJavaVersion()
+        print "~ using java version \"%s\"" % javaVersion
+        if javaVersion.startswith("1.7"):
+            # JDK 7 compat
+            java_args.append('-XX:-UseSplitVerifier')
+        elif javaVersion.startswith("1.8"):
+            java_args.append('-noverify')
+
         java_policy = self.readConf('java.policy')
         if java_policy != '':
             policyFile = os.path.join(self.path, 'conf', java_policy)
