@@ -64,10 +64,7 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
     public void contextInitialized(ServletContextEvent e) {
         String appDir = e.getServletContext().getRealPath("/WEB-INF/application");
         File root = new File(appDir);
-        String playId = e.getServletContext().getInitParameter("play.id");
-        if ("cloud".equals(System.getProperty("hitta.env"))) {
-            playId = "cloud";
-        }
+        final String playId = e.getServletContext().getInitParameter("play.id");
         if (StringUtils.isEmpty(playId)) {
             throw new UnexpectedException("Please define a play.id parameter in your web.xml file. Without that parameter, play! cannot start your application. Please add a context-param into the WEB-INF/web.xml file.");
         }
