@@ -9,6 +9,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +27,7 @@ import play.exceptions.UnexpectedException;
 import play.mvc.After;
 import play.mvc.Before;
 import play.mvc.Finally;
+import play.mvc.Catch;
 import play.mvc.With;
 
 /**
@@ -447,7 +450,7 @@ class JavaWithCaching {
      * @param annotationType The annotation class
      * @return A list of method object
      */
-    public List<Method> findAllAnnotatedMethods(Class<?> clazz, Class<? extends Annotation> annotationType) {
+    public List<Method> findAllAnnotatedMethods(Class<?> clazz, final Class<? extends Annotation> annotationType) {
 
         if( clazz == null ) {
             return new ArrayList<Method>(0);
@@ -472,6 +475,26 @@ class JavaWithCaching {
                     methods.add(method);
                 }
             }
+
+            // hitta mod: sorting has been moved here from ActionInvoker
+            Collections.sort(methods, new Comparator<Method>() {
+
+                public int compare(Method m1, Method m2) {
+                    Annotation ann1 = m1.getAnnotation(annotationType);
+                    Annotation ann2 = m2.getAnnotation(annotationType);
+                    if (annotationType.isAssignableFrom(Before.class)) {
+                        return ((Before)ann1).priority() - ((Before)ann2).priority();
+                    } else if (annotationType.isAssignableFrom(After.class)) {
+                        return ((After)ann1).priority() - ((After)ann2).priority();
+                    } else if (annotationType.isAssignableFrom(Catch.class)) {
+                        return ((Catch)ann1).priority() - ((Catch)ann2).priority();
+                    } else if (annotationType.isAssignableFrom(Finally.class)) {
+                        return ((Finally)ann1).priority() - ((Finally)ann2).priority();
+                    }
+                    return 0;
+                }
+            });
+            // hitta end
 
             // store it in cache
             classAndAnnotation2Methods.put( key, methods);
